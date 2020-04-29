@@ -93,7 +93,7 @@ int main(void) {
 
   std::cout << "server waiting for connections..." << std::endl;
 
-  std::string directory = "/home/anna/code/networking/server";
+  std::string directory = "/home/anna/code/networking/server/";
   while (true) {
     const int new_fd = accept(sockfd, nullptr, nullptr);
     CONTINUE_IF_ERROR((new_fd), -1, "server: error on accept");

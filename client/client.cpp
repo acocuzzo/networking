@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   //assert(numbytes == filesize);
   std::vector<char> file_data(filesize);
   std::fstream new_file;
-  std::string directory = "/home/anna/code/networking/client";
+  std::string directory = "/home/anna/code/networking/client/";
   new_file.open((directory + filename), std::ios::out | std::ios::app);
   while (new_file.is_open()) {
     if (filesize <= kMaxDataSize) {
