@@ -84,34 +84,35 @@ int main(int argc, char *argv[]) {
   std::cout << "received filesize of " << filesize << std::endl;
   // check bytes received matches a size_t
   //assert(numbytes == filesize);
-  std::vector<char> file_data(filesize);
   std::fstream new_file;
   std::string directory = "/home/anna/code/networking/client/";
   new_file.open((directory + filename), std::ios::out | std::ios::app);
   while (new_file.is_open()) {
     if (filesize <= kMaxDataSize) {
+      std::vector<char> file_data(kMaxDataSize);
       RETURN_IF_ERROR((numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
                       -1, "client: recv filedata");
       new_file << file_data.data();
       new_file.close();
     } else {
-      std::size_t overflow = filesize - kMaxDataSize;
-      int start = 0;
+      std::size_t overflow = filesize;
       while (overflow > 0) {
-        if (overflow > 100) {
+        while (overflow >= 100) {
+          std::vector<char> file_data(kMaxDataSize);
           RETURN_IF_ERROR(
-              (numbytes = recv(sockfd, file_data.data() + start, kMaxDataSize, 0)),
+              (numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
               -1, "client: recv file segment");
-          new_file << file_data.data() + start;
+          std::cout << "received segment starting with " << file_data.data()[0];
+          new_file << file_data.data();
           overflow -= kMaxDataSize;
-          start += kMaxDataSize;
-        } else {
-          RETURN_IF_ERROR(
-              (numbytes = recv(sockfd, file_data.data() + start, overflow, 0)), -1,
-              "client: recv file segment last");
-          new_file << file_data.data() + start;
-          new_file.close();
         }
+        std::vector<char> file_data(overflow);
+          RETURN_IF_ERROR(
+              (numbytes = recv(sockfd, file_data.data(), overflow, 0)), -1,
+              "client: recv file segment last");
+          new_file << file_data.data();
+          new_file.close();
+          overflow = 0;
       }
     }
   }
