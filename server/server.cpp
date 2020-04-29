@@ -71,7 +71,9 @@ std::vector<char> get_file_data(std::string filename) {
   return vec;
 }
 
-void send_file_len(std::vector<char> file_data);
+void send_file_len(int sock, std::vector<char> file_data){
+
+}
 
 std::vector<char> slice_vec(std::vector<char> const &vec, int start, int length){
   auto first = vec.cbegin() + start;

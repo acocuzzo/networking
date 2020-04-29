@@ -34,8 +34,14 @@ namespace {
 constexpr char kPort[] = "3490";
 constexpr std::size_t kMaxDataSize =
     100;  // max number of bytes we can get at once
+
+
+
+
+
+
 }  // namespace
-// namespace
+
 
 int main(int argc, char *argv[]) {
   if (argc != 3) {
@@ -87,9 +93,9 @@ int main(int argc, char *argv[]) {
   std::fstream new_file;
   std::string directory = "/home/anna/code/networking/client/";
   new_file.open((directory + filename), std::ios::out | std::ios::app);
+  std::vector<char> file_data(kMaxDataSize);
   while (new_file.is_open()) {
     if (filesize <= kMaxDataSize) {
-      std::vector<char> file_data(kMaxDataSize);
       RETURN_IF_ERROR((numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
                       -1, "client: recv filedata");
       new_file << file_data.data();
@@ -98,7 +104,6 @@ int main(int argc, char *argv[]) {
       std::size_t overflow = filesize;
       while (overflow > 0) {
         while (overflow >= 100) {
-          std::vector<char> file_data(kMaxDataSize);
           RETURN_IF_ERROR(
               (numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
               -1, "client: recv file segment");
@@ -106,7 +111,6 @@ int main(int argc, char *argv[]) {
           new_file << file_data.data();
           overflow -= kMaxDataSize;
         }
-        std::vector<char> file_data(overflow);
           RETURN_IF_ERROR(
               (numbytes = recv(sockfd, file_data.data(), overflow, 0)), -1,
               "client: recv file segment last");
