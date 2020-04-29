@@ -38,7 +38,7 @@ constexpr std::size_t kMaxDataSize =
 // namespace
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
+  if (argc != 3) {
     std::cerr << "usage:client hostname" << std::endl;
     return 1;
   }
@@ -66,14 +66,14 @@ int main(int argc, char *argv[]) {
     break;
   }
   RETURN_2_IF_ERROR((p), nullptr, "client: failed to connect");
-  std::string filename = "sample.txt";
+  std::string filename = argv[2];
 
   // send length of filename
-  std::size_t len = sizeof(filename);
+  const std::size_t len = filename.size() + 1;
   CLOSE_R_IF_ERROR((send(sockfd, &len, sizeof(std::size_t), 0)), -1,
                    "client:send len", sockfd);
   // send file name
-  CLOSE_R_IF_ERROR((send(sockfd, &filename, len, 0)), -1,
+  CLOSE_R_IF_ERROR((send(sockfd, filename.c_str(), len, 0)), -1,
                    "client:send filename", sockfd);
 
   // rcv filelength
@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
   new_file.open((directory + filename), std::ios::out | std::ios::app);
   while (new_file.is_open()) {
     if (filesize <= kMaxDataSize) {
-      RETURN_IF_ERROR((numbytes = recv(sockfd, &file_data, kMaxDataSize, 0)),
+      RETURN_IF_ERROR((numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
                       -1, "client: recv filedata");
       new_file << file_data.data();
       new_file.close();
@@ -100,16 +100,16 @@ int main(int argc, char *argv[]) {
       while (overflow > 0) {
         if (overflow > 100) {
           RETURN_IF_ERROR(
-              (numbytes = recv(sockfd, &(file_data[start]), kMaxDataSize, 0)),
+              (numbytes = recv(sockfd, file_data.data() + start, kMaxDataSize, 0)),
               -1, "client: recv file segment");
-          new_file << &(file_data[start]);
+          new_file << file_data.data() + start;
           overflow -= kMaxDataSize;
           start += kMaxDataSize;
         } else {
           RETURN_IF_ERROR(
-              (numbytes = recv(sockfd, &(file_data[start]), overflow, 0)), -1,
+              (numbytes = recv(sockfd, file_data.data() + start, overflow, 0)), -1,
               "client: recv file segment last");
-          new_file << &(file_data[start]);
+          new_file << file_data.data() + start;
           new_file.close();
         }
       }

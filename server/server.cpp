@@ -38,6 +38,11 @@ constexpr char kPort[] = "3490";
 constexpr std::size_t kBacklog = 100;
 constexpr std::size_t kMaxDataSize = 100;
 
+std::string receive_file_name(int sock){
+
+return;
+}
+
 std::vector<char> get_file_data(std::string filename) {
   std::vector<char> vec;
   std::ifstream file;
@@ -97,6 +102,8 @@ int main(void) {
   while (true) {
     const int new_fd = accept(sockfd, nullptr, nullptr);
     CONTINUE_IF_ERROR((new_fd), -1, "server: error on accept");
+
+
     // rcv length of file name from client
     int numbytes;
     std::size_t len;
@@ -118,12 +125,12 @@ int main(void) {
     // send length of the file
     std::size_t filesize = file_data.size();
     std::cout << "filesize is " << filesize << std::endl;
-    CLOSE_R_IF_ERROR((send(new_fd, &filesize, sizeof(filesize), 0)), -1,
+    CLOSE_R_IF_ERROR((send(new_fd, &filesize, sizeof(std::size_t), 0)), -1,
                      "Server:send", new_fd);
     // send the file
     // if file is less than or equal to maxdatasize, send in one chunk
     if (filesize <= kMaxDataSize) {
-      CLOSE_R_IF_ERROR((send(new_fd, &file_data, filesize, 0)), -1,
+      CLOSE_R_IF_ERROR((send(new_fd, file_data.data(), filesize, 0)), -1,
                        "Server: sendfile kMaxDataSize", new_fd);
       std::cout << "sent file data starting with" << file_data[0] << std::endl;
     }
@@ -135,7 +142,7 @@ int main(void) {
         // if greater than maxdatasize by more than 100, send maxdatasize at a
         // time.
         if (overflow > 100) {
-          CLOSE_R_IF_ERROR((send(new_fd, &(file_data[start]), kMaxDataSize, 0)),
+          CLOSE_R_IF_ERROR((send(new_fd, &(file_data.data()[start]), kMaxDataSize, 0)),
                            -1, "Server:send file segment", new_fd);
           
           std::cout << "sent file data starting with" << file_data[start] << std::endl;
@@ -144,7 +151,7 @@ int main(void) {
         }
         // if equal to or less than maxdatasize, send only overflow data
         else {
-          CLOSE_R_IF_ERROR((send(new_fd, &(file_data[start]), overflow, 0)), -1,
+          CLOSE_R_IF_ERROR((send(new_fd, &(file_data.data()[start]), overflow, 0)), -1,
                            "Server:send file segment last", new_fd);
           
           std::cout << "sent last segment starting with" << file_data[start] << std::endl;
