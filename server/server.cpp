@@ -78,11 +78,11 @@ void send_segment(int sock, std::vector<char> file_data, std::size_t filesize) {
     CLOSE_E_IF_ERROR((send(sock, file_data.data(), filesize, 0)), -1,
                      "Server:send file segment last", sock);
 
-    std::cout << "sent last segment starting with" << file_data[0] << std::endl;
+    std::cout << "server: sent last segment:" << file_data.data()[0] << std::endl;
   } else {
     CLOSE_E_IF_ERROR((send(sock, file_data.data(), kMaxDataSize, 0)), -1,
                      "Server:send file segment", sock);
-    std::cout << "sent file data starting with" << file_data[0] << std::endl;
+    std::cout << "server:sent file data " << file_data.data()[0] << std::endl;
     file_data.erase(file_data.begin(), file_data.begin() + kMaxDataSize);
     filesize -= kMaxDataSize;
     send_segment(sock, file_data, filesize);

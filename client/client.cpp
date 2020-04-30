@@ -54,31 +54,30 @@ void rcv_file(int sock, std::string filename, std::size_t filesize) {
   int numbytes;
   std::fstream new_file;
   std::string directory = "/home/anna/code/networking/client/";
-  new_file.open((directory + filename), std::ios::out | std::ios::app);
-  while (new_file.is_open()){
   if (filesize <= kMaxDataSize) {
     std::vector<char> file_data(filesize);
-    EXIT_IF_ERROR((numbytes = recv(sock, file_data.data(), filesize, 0)),
-                  -1, "client: recv filedata");
+    EXIT_IF_ERROR((numbytes = recv(sock, file_data.data(), filesize, 0)), -1,
+                  "client: recv filedata");
+
+    new_file.open((directory + filename), std::ios::out | std::ios::app);
     new_file << file_data.data();
-    std::cout << "received last segment" << std::endl;
     new_file.close();
+    std::cout << "client: received last segment" << file_data.data()
+              << std::endl;
   } else {
     std::vector<char> file_segment(kMaxDataSize);
     EXIT_IF_ERROR((numbytes = recv(sock, file_segment.data(), kMaxDataSize, 0)),
                   -1, "client: recv file segment");
+
+    new_file.open((directory + filename), std::ios::out | std::ios::app);
     new_file << file_segment.data();
-    std::cout << "received segment starting with " << file_segment.data()[0] << std::endl;
+    new_file.close();
+    std::cout << "client: received segment" << file_segment.data() << std::endl;
     filesize -= kMaxDataSize;
     rcv_file(sock, filename, filesize);
   }
-  new_file.close();
-  }
 }
-
-
 }  // namespace
-
 
 int main(int argc, char *argv[]) {
   if (argc != 3) {
