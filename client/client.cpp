@@ -1,4 +1,3 @@
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
@@ -22,11 +21,11 @@
     action;                                                     \
   }
 
-#define RETURN_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, return 1)
-#define RETURN_2_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, return 2)
+#define EXIT_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, exit(1))
+#define EXIT_2_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, exit(2))
 #define CONTINUE_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, continue)
-#define CLOSE_R_IF_ERROR(x, y, err, sock) \
-  DO_IF_ERROR(x, y, err, close(sock); return 1)
+#define CLOSE_E_IF_ERROR(x, y, err, sock) \
+  DO_IF_ERROR(x, y, err, close(sock); exit(1))
 #define CLOSE_C_IF_ERROR(x, y, err, sock) \
   DO_IF_ERROR(x, y, err, close(sock); continue)
 
@@ -35,9 +34,47 @@ constexpr char kPort[] = "3490";
 constexpr std::size_t kMaxDataSize =
     100;  // max number of bytes we can get at once
 
+void send_file_name(int sock, std::string filename){
+  const std::size_t len = filename.size() + 1;
+  CLOSE_E_IF_ERROR((send(sock, &len, sizeof(std::size_t), 0)), -1,
+                   "client:send len", sock);
+  CLOSE_E_IF_ERROR((send(sock, filename.c_str(), len, 0)), -1,
+                   "client:send filename", sock);
+}
 
-
-
+std::size_t rcv_file_size(int sock){
+  int numbytes;
+  std::size_t filesize;
+  EXIT_IF_ERROR((numbytes = recv(sock, &filesize, sizeof(std::size_t), 0)),
+                  -1, "client: recv filelength");
+  std::cout << "received filesize of " << filesize << std::endl;
+  return filesize;
+}
+void rcv_file(int sock, std::string filename, std::size_t filesize) {
+  int numbytes;
+  std::fstream new_file;
+  std::string directory = "/home/anna/code/networking/client/";
+  new_file.open((directory + filename), std::ios::out | std::ios::app);
+  while (new_file.is_open()){
+  if (filesize <= kMaxDataSize) {
+    std::vector<char> file_data(filesize);
+    EXIT_IF_ERROR((numbytes = recv(sock, file_data.data(), filesize, 0)),
+                  -1, "client: recv filedata");
+    new_file << file_data.data();
+    std::cout << "received last segment" << std::endl;
+    new_file.close();
+  } else {
+    std::vector<char> file_segment(kMaxDataSize);
+    EXIT_IF_ERROR((numbytes = recv(sock, file_segment.data(), kMaxDataSize, 0)),
+                  -1, "client: recv file segment");
+    new_file << file_segment.data();
+    std::cout << "received segment starting with " << file_segment.data()[0] << std::endl;
+    filesize -= kMaxDataSize;
+    rcv_file(sock, filename, filesize);
+  }
+  new_file.close();
+  }
+}
 
 
 }  // namespace
@@ -56,7 +93,7 @@ int main(int argc, char *argv[]) {
 
   struct addrinfo *servinfo_ptr = nullptr;
   int rv;
-  RETURN_IF_ERROR((rv = getaddrinfo(argv[1], kPort, &hints, &servinfo_ptr)), -1,
+  EXIT_IF_ERROR((rv = getaddrinfo(argv[1], kPort, &hints, &servinfo_ptr)), -1,
                   "client: getaddrinfo");
   std::unique_ptr<struct addrinfo, decltype(&freeaddrinfo)> servinfo(
       servinfo_ptr, freeaddrinfo);
@@ -71,56 +108,12 @@ int main(int argc, char *argv[]) {
                      "client: connect", sockfd);
     break;
   }
-  RETURN_2_IF_ERROR((p), nullptr, "client: failed to connect");
-  std::string filename = argv[2];
+  EXIT_2_IF_ERROR((p), nullptr, "client: failed to connect");
 
-  // send length of filename
-  const std::size_t len = filename.size() + 1;
-  CLOSE_R_IF_ERROR((send(sockfd, &len, sizeof(std::size_t), 0)), -1,
-                   "client:send len", sockfd);
-  // send file name
-  CLOSE_R_IF_ERROR((send(sockfd, filename.c_str(), len, 0)), -1,
-                   "client:send filename", sockfd);
-
-  // rcv filelength
-  int numbytes;
-  std::size_t filesize;
-  RETURN_IF_ERROR((numbytes = recv(sockfd, &filesize, sizeof(std::size_t), 0)),
-                  -1, "client: recv filelength");
-  std::cout << "received filesize of " << filesize << std::endl;
-  // check bytes received matches a size_t
-  //assert(numbytes == filesize);
-  std::fstream new_file;
-  std::string directory = "/home/anna/code/networking/client/";
-  new_file.open((directory + filename), std::ios::out | std::ios::app);
-  std::vector<char> file_data(kMaxDataSize);
-  while (new_file.is_open()) {
-    if (filesize <= kMaxDataSize) {
-      RETURN_IF_ERROR((numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
-                      -1, "client: recv filedata");
-      new_file << file_data.data();
-      new_file.close();
-    } else {
-      std::size_t overflow = filesize;
-      while (overflow > 0) {
-        while (overflow >= 100) {
-          RETURN_IF_ERROR(
-              (numbytes = recv(sockfd, file_data.data(), kMaxDataSize, 0)),
-              -1, "client: recv file segment");
-          std::cout << "received segment starting with " << file_data.data()[0];
-          new_file << file_data.data();
-          overflow -= kMaxDataSize;
-        }
-          RETURN_IF_ERROR(
-              (numbytes = recv(sockfd, file_data.data(), overflow, 0)), -1,
-              "client: recv file segment last");
-          new_file << file_data.data();
-          new_file.close();
-          overflow = 0;
-      }
-    }
-  }
-  std::cout << "client: received" << filename << std::endl;
+  send_file_name(sockfd, argv[2]);
+  std::size_t filesize = rcv_file_size(sockfd);
+  rcv_file(sockfd, argv[2], filesize);
+  std::cout << "client: received" << argv[2] << std::endl;
   close(sockfd);
   return 0;
 }

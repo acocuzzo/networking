@@ -30,31 +30,26 @@
 #define CONTINUE_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, continue)
 #define CLOSE_C_IF_ERROR(x, y, err, sock) \
   DO_IF_ERROR(x, y, err, close(sock); continue)
-#define CLOSE_R_IF_ERROR(x, y, err, sock) \
-  DO_IF_ERROR(x, y, err, close(sock); return 1)
+#define CLOSE_E_IF_ERROR(x, y, err, sock) \
+  DO_IF_ERROR(x, y, err, close(sock); exit(1))
 
 namespace {
 constexpr char kPort[] = "3490";
 constexpr std::size_t kBacklog = 100;
 constexpr std::size_t kMaxDataSize = 100;
 
-std::vector<char> rcv_filename(int sock){
-  // rcv length of file name from client
+std::vector<char> rcv_filename(int sock) {
   int numbytes;
   std::size_t len;
   EXIT_IF_ERROR((numbytes = recv(sock, &len, sizeof(std::size_t), 0)), -1,
-                    "client: recv");
-    // make sure they sent a size_t type
-    assert(numbytes == sizeof(std::size_t));
-    std::cout << "received length of file name" << len << std::endl;
-    // create a char vector to read into
-    std::vector<char> filename(len);
-    // rcv filename from client
-    EXIT_IF_ERROR((numbytes = recv(sock, filename.data(), len, 0)), -1,
-                    "client: recv");
-    // make sure filename size matches expected length
-    assert(numbytes == len);
-   return filename;
+                "client: recv");
+  assert(numbytes == sizeof(std::size_t));
+  std::cout << "received length of file name" << len << std::endl;
+  std::vector<char> filename(len);
+  EXIT_IF_ERROR((numbytes = recv(sock, filename.data(), len, 0)), -1,
+                "client: recv");
+  assert(numbytes == len);
+  return filename;
 }
 std::vector<char> get_file_data(std::string filename) {
   std::vector<char> vec;
@@ -71,16 +66,37 @@ std::vector<char> get_file_data(std::string filename) {
   return vec;
 }
 
-void send_file_len(int sock, std::vector<char> file_data){
-
+std::size_t send_file_len(int sock, std::vector<char> file_data) {
+  std::size_t filesize = file_data.size();
+  std::cout << "filesize is " << filesize << std::endl;
+  CLOSE_E_IF_ERROR((send(sock, &filesize, sizeof(std::size_t), 0)), -1,
+                   "Server:send", sock);
+  return filesize;
 }
+void send_segment(int sock, std::vector<char> file_data, std::size_t filesize) {
+  if (filesize < kMaxDataSize) {
+    CLOSE_E_IF_ERROR((send(sock, file_data.data(), filesize, 0)), -1,
+                     "Server:send file segment last", sock);
 
-std::vector<char> slice_vec(std::vector<char> const &vec, int start, int length){
+    std::cout << "sent last segment starting with" << file_data[0] << std::endl;
+  } else {
+    CLOSE_E_IF_ERROR((send(sock, file_data.data(), kMaxDataSize, 0)), -1,
+                     "Server:send file segment", sock);
+    std::cout << "sent file data starting with" << file_data[0] << std::endl;
+    file_data.erase(file_data.begin(), file_data.begin() + kMaxDataSize);
+    filesize -= kMaxDataSize;
+    send_segment(sock, file_data, filesize);
+  }
+}
+/*
+std::vector<char> slice_vec(std::vector<char> const &vec, int start,
+                            int length) {
   auto first = vec.cbegin() + start;
   auto last = vec.cbegin() + start + length;
   std::vector<char> vec_slice(first, last);
   return vec_slice;
 }
+*/
 }  // namespace
 
 int main(void) {
@@ -90,8 +106,6 @@ int main(void) {
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-
-   
   // will point to the results
   int rv;
   struct addrinfo *servinfo_ptr;  // will point to the results
@@ -130,43 +144,9 @@ int main(void) {
     std::vector<char> filename = rcv_filename(new_fd);
     std::cout << "received filename" << filename.data() << std::endl;
     std::vector<char> file_data = get_file_data(directory + filename.data());
-    // send length of the file
-    std::size_t filesize = file_data.size();
-    std::cout << "filesize is " << filesize << std::endl;
-    CLOSE_R_IF_ERROR((send(new_fd, &filesize, sizeof(std::size_t), 0)), -1,
-                     "Server:send", new_fd);
-    // send the file
-    // if file is less than or equal to maxdatasize, send in one chunk
-    if (filesize <= kMaxDataSize) {
-      CLOSE_R_IF_ERROR((send(new_fd, file_data.data(), filesize, 0)), -1,
-                       "Server: sendfile kMaxDataSize", new_fd);
-      std::cout << "sent file data starting with" << file_data[0] << std::endl;
-    }
-    // if file is greater than maxdatasize
-    else {
-      std::size_t overflow = filesize;
-      int start = 0;
-      while (overflow > 0) {
-        // if greater than maxdatasize by more than 100, send maxdatasize at a
-        // time.
-        while (overflow > 100) {
-          std::vector<char> slice = slice_vec(file_data, start, kMaxDataSize);
-          CLOSE_R_IF_ERROR((send(new_fd, slice.data(), kMaxDataSize, 0)),
-                           -1, "Server:send file segment", new_fd);
-          std::cout << "sent file data starting with" << file_data[start] << std::endl;
-          overflow -= kMaxDataSize;
-          start += kMaxDataSize;
-        }
-        // if equal to or less than maxdatasize, send only overflow data
-        std::vector<char> slice = slice_vec(file_data, start, overflow);
-          CLOSE_R_IF_ERROR((send(new_fd, file_data.data() + start, overflow, 0)), -1,
-                           "Server:send file segment last", new_fd);
-          
-          std::cout << "sent last segment starting with" << file_data[start] << std::endl;
-          overflow = 0;
-      }
-    }
+    std::size_t filesize = send_file_len(new_fd, file_data);
 
+    send_segment(new_fd, file_data, filesize);
     ::close(new_fd);
   }
   ::close(sockfd);
