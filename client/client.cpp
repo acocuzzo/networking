@@ -101,17 +101,17 @@ int main(int argc, char *argv[]) {
     std::cerr << filesize_or.error() << std::endl;
   }
   std::size_t filesize = std::move(*filesize_or);
-  int numbytes;
   std::fstream new_file;
   std::string directory = "/home/anna/code/networking/client/";
 
   while (filesize > 0) {
     const std::size_t partsize = filesize < kMaxDataSize ? filesize : kMaxDataSize;
     std::vector<char> file_data(partsize);
-    if ((numbytes = recv(sockfd, file_data.data(), partsize, 0)) == -1) {
-      std::cerr << "client: rcv filedata" << std::endl;
-      ::close(sockfd);
-      return 1;
+    int received = recv(sockfd, file_data.data(), partsize, 0);
+    if (received == -1){
+        std::cerr << "client: rcv file" << std::endl;
+        ::close(sockfd);
+        return 1;
     }
     new_file.open((directory + filename), std::ios::out | std::ios::app);
     new_file.write(file_data.data(), file_data.size());
@@ -119,12 +119,7 @@ int main(int argc, char *argv[]) {
     std::cout << "client: received segment: " << std::endl;
     std::cout.write(file_data.data(), file_data.size());
     std::cout << std::endl;
-    if (filesize <= kMaxDataSize){
-    filesize = 0;
-    }
-    else{
-        filesize -= kMaxDataSize;
-    }
+        filesize -= received;
   }
   std::cout << "client: received" << filename << std::endl;
   ::close(sockfd);
