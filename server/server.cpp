@@ -20,51 +20,44 @@
 #include <memory>
 #include <sstream>
 
-#include "statusor.h"
+#include "util/statusor.h"
 
-#define DO_IF_ERROR(x, y, err, action)                          \
-  if ((x) == (y)) {                                             \
+#define DO_IF_ERROR(x, err, action)                             \
+  if ((x) == -1) {                                              \
     std::cerr << (err) << ": " << strerror(errno) << std::endl; \
     action;                                                     \
   }
 
-#define CONTINUE_IF_ERROR(x, y, err) DO_IF_ERROR(x, y, err, continue)
-#define CLOSE_C_IF_ERROR(x, y, err, sock) \
-  DO_IF_ERROR(x, y, err, close(sock); continue)
-#define CLOSE_E_IF_ERROR(x, y, err, sock) \
-  DO_IF_ERROR(x, y, err, close(sock); exit(1))
+#define CONTINUE_IF_ERROR(x, err) DO_IF_ERROR(x, err, continue)
+#define CLOSE_IF_ERROR(x, err, sock) DO_IF_ERROR(x, err, close(sock); continue)
 
 namespace {
 constexpr char kPort[] = "3490";
 constexpr std::size_t kBacklog = 100;
 constexpr std::size_t kMaxDataSize = 100;
 
-StatusOr<std::vector<char>> rcv_filename(int sock) {
+util::StatusOr<std::vector<char>> rcv_filename(int sock) {
   int numbytes;
   std::size_t len;
-  if ((numbytes = recv(sock, &len, sizeof(std::size_t), 0)) == -1)
-  {
-    return Status(Status::Code::INTERNAL, "client: recv");
+  if ((numbytes = recv(sock, &len, sizeof(std::size_t), 0)) == -1) {
+    return util::Status(util::Status::Code::INTERNAL, "svr: rcv filename len");
   }
   assert(numbytes == sizeof(std::size_t));
   std::cout << "received length of file name" << len << std::endl;
   std::vector<char> filename(len);
-  if ((numbytes = recv(sock, filename.data(), len, 0)) == -1)
-  {
-    return Status(Status::Code::INTERNAL, "client: recv");
+  if ((numbytes = recv(sock, filename.data(), len, 0)) == -1) {
+    return util::Status(util::Status::Code::INTERNAL, "svr: rcv filename");
   }
   assert(numbytes == len);
   return filename;
 }
 
-
-Status send_file_len(int sock, std::size_t filesize) {
+util::Status send_file_len(int sock, std::size_t filesize) {
   std::cout << "filesize is " << filesize << std::endl;
-  if (send(sock, &filesize, sizeof(std::size_t), 0) == -1)
-  {
-    return Status(Status::Code::INTERNAL, "Server::send");
+  if (send(sock, &filesize, sizeof(std::size_t), 0) == -1) {
+    return util::Status(util::Status::Code::INTERNAL, "svr: send filesize");
   }
-  return Status::OK();
+  return util::Status::make_OK();
 }
 }  // namespace
 
@@ -73,76 +66,88 @@ int main(void) {
   bzero(&hints, sizeof(struct addrinfo));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
+  hints.ai_flags = AI_PASSIVE;  // use my IP
 
   // will point to the results
   int rv;
   struct addrinfo *servinfo_ptr;  // will point to the results
-  if ((rv = getaddrinfo(nullptr, kPort, &hints, &servinfo_ptr) != 0)) {
-    std::cerr << "getaddrinfo: " << gai_strerror(rv) << std::endl;
+  if ((rv = getaddrinfo(nullptr, kPort, &hints, &servinfo_ptr)) != 0) {
+    std::cerr << "svr: getaddrinfo " << gai_strerror(rv) << std::endl;
     return 1;
   }
+  // make servinfo a unique ptr
   std::unique_ptr<struct addrinfo, decltype(&freeaddrinfo)> servinfo(
       servinfo_ptr, freeaddrinfo);
-
-  int sockfd;  // listen on sockfd, new conn on new_fd
+  // listen on sockfd, new conn on new_fd
+  int sockfd;
   struct addrinfo *p;
+
+  // loop through all the results and bind to the first we can
   for (p = servinfo.get(); p != nullptr; p = p->ai_next) {
-    CONTINUE_IF_ERROR(
-        (sockfd = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol)), -1,
-        "Server error: socket()");
+    if((sockfd = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
+      std::cerr << "svr: socket()" << std::endl;
+      ::close(sockfd);
+      continue;
+  }
+  // set options on this socket
     const int yes = 1;
-    if (::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
-    {
-      std::cerr << "Server error: setsockopt()" << std::endl;
-      return -1;
+    if (::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) ==
+        -1) {
+      std::cerr << "svr: setsockopt()" << std::endl;
+      return 1;
     }
-    CLOSE_C_IF_ERROR((::bind(sockfd, p->ai_addr, p->ai_addrlen)), -1,
-                     "Server error: bind", sockfd);
+// bind this socket
+    if(::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1){
+      std::cerr << "svr: bind()" << gai_strerror(rv) << std::endl;
+      close(sockfd);
+      continue;
+    }
     break;
   }
 
-  if (p == nullptr || ::listen(sockfd, kBacklog) == -1)
-  {
+  if (p == nullptr || ::listen(sockfd, kBacklog) == -1) {
+    std::cerr << "svr: failed to connect or listen" << strerror(errno)
+              << std::endl;
     return 1;
   }
 
   std::cout << "server waiting for connections..." << std::endl;
+  
   const std::string directory = "/home/anna/code/networking/server/";
+
   while (true) {
     const int new_fd = ::accept(sockfd, nullptr, nullptr);
-    CONTINUE_IF_ERROR(new_fd, -1, "server: error on accept");
+    CONTINUE_IF_ERROR(new_fd, "svr: error accept()");
 
     auto filename_or = rcv_filename(new_fd);
-    if (!filename_or.ok())
-    {
+
+    if (!filename_or.ok()) {
       ::close(new_fd);
       continue;
     }
-
+    
     std::vector<char> filename = std::move(*filename_or);
     std::cout << "received filename" << filename.data() << std::endl;
     std::ifstream file;
-    file.open(filename.data(), std::ifstream::in | std::ifstream::binary);
+    const std::string directory = "/home/anna/code/networking/server/";
+    file.open(directory + filename.data(), std::ifstream::in | std::ifstream::binary);
     file.seekg(0, std::ios::end);
     std::size_t filesize(file.tellg());
     file.seekg(0, std::ios::beg);
-    Status status = send_file_len(new_fd, filesize);
-    if (!status.ok())
-    {
+    util::Status status = send_file_len(new_fd, filesize);
+    if (!status.ok()) {
       ::close(new_fd);
       continue;
     }
 
     const std::size_t chunkSize = filesize < kMaxDataSize ? filesize : kMaxDataSize;
-    std::vector<char> vec(chunkSize);
     while (filesize > 0)
     {
       const std::size_t partsize = filesize < chunkSize ? filesize : chunkSize;
+        std::vector<char> vec(partsize);
       file.read(vec.data(), partsize);
-      ssize_t sent = send(new_fd, vec.data(), partsize, 0);
-      if (sent == -1)
-      {
+      ssize_t sent = ::send(new_fd, vec.data(), partsize, 0);
+      if (sent == -1) {
         break;
       }
       filesize -= sent;
