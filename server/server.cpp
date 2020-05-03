@@ -38,7 +38,7 @@ namespace {
 constexpr char kPort[] = "3490";
 constexpr std::size_t kBacklog = 100;
 constexpr std::size_t kMaxDataSize = 100;
-std::mutex mtx;
+
 
 util::StatusOr<std::vector<char>> rcv_filename(int sock) {
   int numbytes;
@@ -171,6 +171,9 @@ int main(void) {
 
   std::cout << "server waiting for connections..." << std::endl;
   int t_id = 1;
+  std::mutex mu;
+  //create thread pool and work queue
+
   while (true) {
     
     const int new_fd = ::accept(sockfd, nullptr, nullptr);
@@ -178,7 +181,7 @@ int main(void) {
     std::cerr << "svr: error accept()" <<std::endl;
     }
     else{
-    std::thread t(std::bind(ftp, new_fd, t_id));
+    std::thread t(std::bind(ftp, new_fd, t_id, &mu));
     t.detach();
     ++t_id;
     }
