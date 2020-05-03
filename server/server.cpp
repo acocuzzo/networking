@@ -19,6 +19,9 @@
 #include <iterator>
 #include <memory>
 #include <sstream>
+//
+#include <thread>
+#include <mutex>
 
 #include "util/statusor.h"
 
@@ -35,6 +38,7 @@ namespace {
 constexpr char kPort[] = "3490";
 constexpr std::size_t kBacklog = 100;
 constexpr std::size_t kMaxDataSize = 100;
+std::mutex mtx;
 
 util::StatusOr<std::vector<char>> rcv_filename(int sock) {
   int numbytes;
@@ -51,6 +55,17 @@ util::StatusOr<std::vector<char>> rcv_filename(int sock) {
   assert(numbytes == len);
   return filename;
 }
+/*
+util::StatusOr<int> rcv_num_files(int sock) {
+  int numbytes;
+  int num_files;
+  if ((numbytes = recv(sock, &num_files, sizeof(int), 0)) == -1) {
+    return util::Status(util::Status::Code::INTERNAL, "svr: rcv num_files");
+  }
+  assert(numbytes == sizeof(int));
+  std::cout <<  num_files << "will be requested" << std::endl;
+  return num_files;
+}*/
 
 util::Status send_file_len(int sock, std::size_t filesize) {
   std::cout << "filesize is " << filesize << std::endl;
@@ -59,6 +74,49 @@ util::Status send_file_len(int sock, std::size_t filesize) {
   }
   return util::Status::make_OK();
 }
+
+void ftp(int new_fd, int t_id, std::mutex* mu) {
+  auto filename_or = rcv_filename(new_fd);
+  if (!filename_or.ok()) {
+      ::close(new_fd);
+      return;
+   }
+   std::vector<char> filename = std::move(*filename_or);
+
+  {
+    std::lock_guard<std::mutex> ifstream_lock(*mu);
+    std::cout << "received filename" << filename.data() << std::endl;
+  }
+  std::ifstream file;
+  const std::string directory = "/home/anna/code/networking/server/";
+  file.open(directory + filename.data(),
+            std::ifstream::in | std::ifstream::binary);
+  file.seekg(0, std::ios::end);
+  std::size_t filesize(file.tellg());
+  file.seekg(0, std::ios::beg);
+  util::Status status = send_file_len(new_fd, filesize);
+  if (!status.ok()) {
+    ::close(new_fd);
+    return;
+  }
+
+  const std::size_t chunkSize =
+      filesize < kMaxDataSize ? filesize : kMaxDataSize;
+  while (filesize > 0) {
+    const std::size_t partsize = filesize < chunkSize ? filesize : chunkSize;
+    std::vector<char> vec(partsize);
+    file.read(vec.data(), partsize);
+    ssize_t sent = ::send(new_fd, vec.data(), partsize, 0);
+    if (sent == -1) {
+      break;
+    }
+    filesize -= sent;
+  }
+  ::close(new_fd);
+  std::lock_guard<std::mutex> ifstream_lock(*mu);
+  std::cout << "thread " << t_id << " completed" << std::endl;
+}
+
 }  // namespace
 
 int main(void) {
@@ -112,47 +170,18 @@ int main(void) {
   }
 
   std::cout << "server waiting for connections..." << std::endl;
-  
-  const std::string directory = "/home/anna/code/networking/server/";
-
+  int t_id = 1;
   while (true) {
-    const int new_fd = ::accept(sockfd, nullptr, nullptr);
-    CONTINUE_IF_ERROR(new_fd, "svr: error accept()");
-
-    auto filename_or = rcv_filename(new_fd);
-
-    if (!filename_or.ok()) {
-      ::close(new_fd);
-      continue;
-    }
     
-    std::vector<char> filename = std::move(*filename_or);
-    std::cout << "received filename" << filename.data() << std::endl;
-    std::ifstream file;
-    const std::string directory = "/home/anna/code/networking/server/";
-    file.open(directory + filename.data(), std::ifstream::in | std::ifstream::binary);
-    file.seekg(0, std::ios::end);
-    std::size_t filesize(file.tellg());
-    file.seekg(0, std::ios::beg);
-    util::Status status = send_file_len(new_fd, filesize);
-    if (!status.ok()) {
-      ::close(new_fd);
-      continue;
+    const int new_fd = ::accept(sockfd, nullptr, nullptr);
+    if (new_fd == -1){
+    std::cerr << "svr: error accept()" <<std::endl;
     }
-
-    const std::size_t chunkSize = filesize < kMaxDataSize ? filesize : kMaxDataSize;
-    while (filesize > 0)
-    {
-      const std::size_t partsize = filesize < chunkSize ? filesize : chunkSize;
-        std::vector<char> vec(partsize);
-      file.read(vec.data(), partsize);
-      ssize_t sent = ::send(new_fd, vec.data(), partsize, 0);
-      if (sent == -1) {
-        break;
-      }
-      filesize -= sent;
+    else{
+    std::thread t(std::bind(ftp, new_fd, t_id));
+    t.detach();
+    ++t_id;
     }
-    ::close(new_fd);
   }
   ::close(sockfd);
   return 0;

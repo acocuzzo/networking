@@ -1,0 +1,71 @@
+In file included from server.cpp:17:
+/usr/bin/../lib/gcc/x86_64-linux-gnu/7.5.0/../../../../include/c++/7.5.0/functional:825:7: error: static_assert failed "Wrong number of arguments for function"
+      static_assert(sizeof...(_BoundArgs) == sizeof...(_Args),
+      ^             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/bin/../lib/gcc/x86_64-linux-gnu/7.5.0/../../../../include/c++/7.5.0/functional:855:7: note: in instantiation of template class 'std::_Bind_check_arity<void (*)(int, int, std::mutex *), const int &, int &>' requested here
+    : _Bind_check_arity<typename decay<_Func>::type, _BoundArgs...>
+      ^
+/usr/bin/../lib/gcc/x86_64-linux-gnu/7.5.0/../../../../include/c++/7.5.0/functional:874:5: note: in instantiation of template class 'std::_Bind_helper<false, void (&)(int, int, std::mutex *), const int &, int &>' requested here
+    _Bind_helper<__is_socketlike<_Func>::value, _Func, _BoundArgs...>::type
+    ^
+server.cpp:181:19: note: while substituting deduced template arguments into function template 'bind' [with _Func = void (&)(int, int, std::mutex *), _BoundArgs = <const int &, int &>]
+    std::thread t(std::bind(ftp, new_fd, t_id));
+                  ^
+server.cpp:181:19: error: no matching function for call to 'bind'
+    std::thread t(std::bind(ftp, new_fd, t_id));
+                  ^~~~~~~~~
+/usr/bin/../lib/gcc/x86_64-linux-gnu/7.5.0/../../../../include/c++/7.5.0/functional:899:5: note: candidate template ignored: couldn't infer template argument '_Result'
+    bind(_Func&& __f, _BoundArgs&&... __args)
+    ^
+/usr/bin/../lib/gcc/x86_64-linux-gnu/7.5.0/../../../../include/c++/7.5.0/functional:875:5: note: candidate template ignored: substitution failure [with _Func = void (&)(int, int, std::mutex *), _BoundArgs = <const int &, int &>]
+    bind(_Func&& __f, _BoundArgs&&... __args)
+    ^
+2 errors generated.
+server waiting for connections...
+received length of file name11
+received length of file name11
+received filenamesample.txt
+received filenamesample.txt
+filesize is 443
+filesize is 443
+client B received filesize of 443
+client A received filesize of 443
+thread 2 completed
+thread 1 completed
+client A: received segment: 
+1h, say can you see by the dawn's early light
+What so proudly we hailed at the twilight's last gleam
+client B: received segment: 
+1h, say can you see by the dawn's early light
+What so proudly we hailed at the twilight's last gleam
+client A: received segment: 
+2ng?
+Whose broad stripes and bright stars through the perilous fight,
+O'er the ramparts we watched w
+client B: received segment: 
+2ng?
+Whose broad stripes and bright stars through the perilous fight,
+O'er the ramparts we watched w
+client A: received segment: 
+3re so gallantly streaming?
+And the rocket's red glare, the bombs bursting in air,
+Gave proof throug
+client B: received segment: 
+3re so gallantly streaming?
+And the rocket's red glare, the bombs bursting in air,
+Gave proof throug
+client A: received segment: 
+4 the night that our flag was still there.
+Oh, say does that star-spangled banner yet wave
+O'er the5
+client B: received segment: 
+4 the night that our flag was still there.
+Oh, say does that star-spangled banner yet wave
+O'er the5
+client A: received segment: 
+land of the free and the home of the brave?
+client A: receivedsample.txt
+client B: received segment: 
+land of the free and the home of the brave?
+client B: receivedsample.txt
+./run.sh: line 9: 17385 Terminated              ./server/build/server
