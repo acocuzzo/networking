@@ -24,6 +24,7 @@
 #include <mutex>
 
 #include "util/statusor.h"
+//#include "util/threadpool.h"
 
 #define DO_IF_ERROR(x, err, action)                             \
   if ((x) == -1) {                                              \
@@ -75,7 +76,7 @@ util::Status send_file_len(int sock, std::size_t filesize) {
   return util::Status::make_OK();
 }
 
-void ftp(int new_fd, int t_id, std::mutex* mu) {
+void ftp(int new_fd) {
   auto filename_or = rcv_filename(new_fd);
   if (!filename_or.ok()) {
       ::close(new_fd);
@@ -83,10 +84,7 @@ void ftp(int new_fd, int t_id, std::mutex* mu) {
    }
    std::vector<char> filename = std::move(*filename_or);
 
-  {
-    std::lock_guard<std::mutex> ifstream_lock(*mu);
-    std::cout << "received filename" << filename.data() << std::endl;
-  }
+  std::cout << "received filename" << filename.data() << std::endl;
   std::ifstream file;
   const std::string directory = "/home/anna/code/networking/server/";
   file.open(directory + filename.data(),
@@ -113,8 +111,7 @@ void ftp(int new_fd, int t_id, std::mutex* mu) {
     filesize -= sent;
   }
   ::close(new_fd);
-  std::lock_guard<std::mutex> ifstream_lock(*mu);
-  std::cout << "thread " << t_id << " completed" << std::endl;
+  std::cout << "thread " << std::this_thread::get_id() << " completed" << std::endl;
 }
 
 }  // namespace
@@ -170,20 +167,15 @@ int main(void) {
   }
 
   std::cout << "server waiting for connections..." << std::endl;
-  int t_id = 1;
-  std::mutex mu;
-  //create thread pool and work queue
+  util::ThreadPool pool(10);
+  // create thread pool and work queue
 
   while (true) {
-    
     const int new_fd = ::accept(sockfd, nullptr, nullptr);
-    if (new_fd == -1){
-    std::cerr << "svr: error accept()" <<std::endl;
-    }
-    else{
-    std::thread t(std::bind(ftp, new_fd, t_id, &mu));
-    t.detach();
-    ++t_id;
+    if (new_fd == -1) {
+      std::cerr << "svr: error accept()" << std::endl;
+    } else {
+      pool.enqueue(std::bind(ftp, new_fd));
     }
   }
   ::close(sockfd);

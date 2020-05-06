@@ -1,0 +1,11 @@
+server waiting for connections...
+terminate called after throwing an instance of 'std::bad_function_call'
+  what():  bad_function_call
+client A: connect(): Connection refused
+client A: failed to connectConnection refused
+client B: connect(): Connection refused
+client B: failed to connectConnection refusedclient C: connect()
+: Connection refused
+client C: failed to connectConnection refused
+./run.sh: line 9: 21624 Aborted                 (core dumped) ./server/build/server
+server: no process found

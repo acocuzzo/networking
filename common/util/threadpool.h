@@ -60,6 +60,6 @@ class ThreadPool {
   std::mutex queue_mutex;
   std::condition_variable condition;
   bool stop;
-}
+};
 }  // namespace util
 #endif

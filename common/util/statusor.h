@@ -4,8 +4,64 @@
 #include <string>
 #include <cstddef>
 
-namespace util {
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
+
+namespace util {
+class ThreadPool {
+ public:
+  explicit ThreadPool(std::uint32_t threads)
+      : stop(false), workers(threads, std::thread(std::bind(doWork, this))) {}
+
+  ~ThreadPool() {
+    {
+      std::unique_lock<std::mutex> lock(queue_mutex);
+      stop = true;
+    }
+    condition.notify_all();
+    for (std::thread& worker : workers) {
+      worker.join();
+    }
+  }
+
+  inline void enqueue(std::function<void()> new_task) {
+    {
+      std::unique_lock<std::mutex> lock(queue_mutex);
+      tasks.push(std::move(new_task));
+    }
+    condition.notify_one();
+  }
+
+ private:
+  inline void doWork() {
+    while (true) {
+      std::function<void()> task;
+      {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        condition.wait(
+            lock, [this] { return this->stop || !this->tasks.empty(); });
+        if (stop && tasks.empty()) {
+          return;
+        }
+        task = std::move(tasks.front());
+        tasks.pop();
+      }
+      task();
+    }
+  }
+
+  std::vector<std::thread> workers;
+  std::queue<std::function<void()>> tasks;
+  std::mutex queue_mutex;
+  std::condition_variable condition;
+  bool stop;
+};
 struct Status {
   enum Code { OK, INTERNAL, NOT_FOUND };
 
